@@ -17,6 +17,34 @@ if [ ! -f "$SQL_FILE" ]; then
     exit 1
 fi
 
+# Function to check if output contains invalid error patterns
+has_invalid_errors() {
+    local output="$1"
+    
+    # Check for common invalid error patterns (case-insensitive)
+    if echo "$output" | grep -qi "not currently supported" || \
+       echo "$output" | grep -qi "syntax error" || \
+       echo "$output" | grep -qi "no such" || \
+       echo "$output" | grep -qi "parse error" || \
+       echo "$output" | grep -qi "no query solution" || \
+       echo "$output" | grep -qi "has no column named" || \
+       echo "$output" | grep -qi "incomplete input" || \
+       echo "$output" | grep -qi "unrecognized token" || \
+       echo "$output" | grep -qi "malformed" || \
+       echo "$output" | grep -qi "expected.*but got" || \
+       echo "$output" | grep -qi "unexpected token" || \
+       echo "$output" | grep -qi "missing" || \
+       echo "$output" | grep -qi "invalid syntax" || \
+       echo "$output" | grep -qi "near.*syntax error" || \
+       echo "$output" | grep -qi "incomplete SQL" || \
+       echo "$output" | grep -qi "unbalanced" || \
+       echo "$output" | grep -qi "unterminated"; then
+       return 0  # Has invalid errors
+    fi
+    
+    return 1  # No invalid errors found
+}
+
 # Function to check for differential behavior
 check_diff() {
     local sqlite_old="/usr/bin/sqlite3-3.26.0"
@@ -47,7 +75,20 @@ check_diff() {
     echo "Old version exit code: $exit_old"
     echo "New version exit code: $exit_new"
     
-    # Check if outputs differ
+    # Check for invalid errors in both outputs
+    if has_invalid_errors "$output_old"; then
+        echo "SQLite 3.26.0 output contains invalid errors - test invalid"
+        echo "Old output: $output_old"
+        return 1  # Test invalid
+    fi
+    
+    if has_invalid_errors "$output_new"; then
+        echo "SQLite 3.39.4 output contains invalid errors - test invalid"  
+        echo "New output: $output_new"
+        return 1  # Test invalid
+    fi
+    
+    # Check if outputs differ (only if both are valid)
     if [ "$output_old" != "$output_new" ] || [ $exit_old -ne $exit_new ]; then
         echo "Different behavior detected!"
         echo "Old output: $output_old"
@@ -68,6 +109,6 @@ if check_diff; then
     echo "Result: Bug still occurs (differential behavior)"
     exit 0  # Bug still occurs
 else
-    echo "Result: Bug no longer occurs (same behavior)"
-    exit 1  # Bug no longer occurs
+    echo "Result: Bug no longer occurs (same behavior or invalid)"
+    exit 1  # Bug no longer occurs or test is invalid
 fi
