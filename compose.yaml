@@ -8,14 +8,11 @@ services:
     # Mount volumes for input queries and output results
     volumes:
       # Mount the queries directory for input SQL files and test scripts
-      - ./queries:/queries
+      - ./queries:/app/queries
       # Mount the output directory for reduced queries
-      - ./output:/output
+      - ./output:/app/output
       # Mount the benchmarks if you have them
-      - ./benchmarks:/benchmarks
-    
-    # Working directory inside the container
-    working_dir: /queries
+      - ./benchmarks:/app/benchmarks
     
     # Environment variables
     environment:
