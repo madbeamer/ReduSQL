@@ -1,0 +1,7 @@
+Original tokens: 289
+Reduced tokens: 1
+Reduction: 288 tokens
+Percentage: 99.65%
+
+Reduced tokens:
+  0: ')'
