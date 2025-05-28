@@ -7,7 +7,7 @@ USER root
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
 
 # Install Python and required dependencies
 RUN apt-get update && apt-get install -y \
@@ -21,10 +21,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Create necessary directories
-RUN mkdir -p /app/src /app/output
+RUN mkdir -p /app/src /app/output /app/queries
 
-# Copy the source code and test scripts
+# Copy the entire source code structure
 COPY src/ /app/src/
+
+# Copy test scripts
 COPY test_crash_3_26_0.sh /app/test_crash_3_26_0.sh
 COPY test_crash_3_39_4.sh /app/test_crash_3_39_4.sh
 COPY test_diff.sh /app/test_diff.sh
@@ -32,11 +34,11 @@ COPY test_diff.sh /app/test_diff.sh
 # Make the scripts executable
 RUN chmod +x /app/src/main.py /app/test_crash_3_26_0.sh /app/test_crash_3_39_4.sh /app/test_diff.sh
 
-# Create a symbolic link for the main executable
+# Create symbolic links for easier access
+RUN ln -sf /app/src/main.py /usr/bin/redusql
 RUN ln -sf /app/src/main.py /usr/bin/reducer
 
 # Set working directory
 WORKDIR /app
 
-# Set default user back to avoid permission issues
-USER root
+ENTRYPOINT ["python3", "/app/src/main.py"]

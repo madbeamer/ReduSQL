@@ -1,15 +1,12 @@
 #!/bin/bash
-# Test script for ReduSQL - DIFF oracle
-# This script checks if a SQL query produces different behavior between SQLite versions
-# Usage: ./test_diff.sh <path_to_sql_file>
 
-# Check if SQL file path is provided
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <path_to_sql_file>"
+# Check if TEST_CASE_LOCATION environment variable is set
+if [ -z "$TEST_CASE_LOCATION" ]; then
+    echo "Error: TEST_CASE_LOCATION environment variable is not set"
     exit 1
 fi
 
-SQL_FILE="$1"
+SQL_FILE="$TEST_CASE_LOCATION"
 
 # Check if SQL file exists
 if [ ! -f "$SQL_FILE" ]; then
@@ -38,6 +35,9 @@ has_invalid_errors() {
        echo "$output" | grep -qi "near.*syntax error" || \
        echo "$output" | grep -qi "incomplete SQL" || \
        echo "$output" | grep -qi "unbalanced" || \
+       echo "$output" | grep -qi "unknown command" || \
+       echo "$output" | grep -qi "invalid arguments" || \
+       echo "$output" | grep -qi "duplicate column name" || \
        echo "$output" | grep -qi "unterminated"; then
        return 0  # Has invalid errors
     fi

@@ -1,6 +1,6 @@
 # ReduSQL with Docker Compose
 
-This guide explains how to use ReduSQL with Docker Compose for reducing SQL queries.
+This guide explains how to use ReduSQL with Docker Compose for reducing SQL queries using delta debugging.
 
 ## Prerequisites
 
@@ -11,17 +11,10 @@ This guide explains how to use ReduSQL with Docker Compose for reducing SQL quer
 
 1. **Ensure you have the required files:**
 
-    - `test.sh` - The shared test script at project root
+    - Test script (e.g., `test.sh`) at project root
     - Your queries organized in `queries/queryN/` directories
-    - Each query directory should contain `your_query.sql` and optionally `oracle.txt`
 
-2. **Make the test script executable:**
-
-    ```bash
-    chmod +x test.sh
-    ```
-
-3. **Build the Docker image:**
+2. **Build the Docker image:**
     ```bash
     docker compose build
     ```
@@ -33,20 +26,27 @@ This guide explains how to use ReduSQL with Docker Compose for reducing SQL quer
 Run the reducer directly with `docker compose run`:
 
 ```bash
-docker compose run --rm redusql reducer \
-  --query /app/queries/query1/original_query.sql \
+docker compose run --rm redusql \
+  --query /app/queries/query1/original_test.sql \
   --test /app/test.sh
 ```
 
-The reducer will automatically save the result to `/app/output/query1/reduced_query.sql`.
-
-**With explicit output path:**
+**With verbose output:**
 
 ```bash
-docker compose run --rm redusql reducer \
-  --query /app/queries/query1/original_query.sql \
+docker compose run --rm redusql \
+  --query /app/queries/query1/original_test.sql \
   --test /app/test.sh \
-  --output /app/output/query1/reduced_query.sql
+  --verbose
+```
+
+**With parallel processing:**
+
+```bash
+docker compose run --rm redusql \
+  --query /app/queries/query1/original_test.sql \
+  --test /app/test.sh \
+  --parallel
 ```
 
 The `--rm` flag automatically removes the container after execution.
@@ -56,50 +56,46 @@ The `--rm` flag automatically removes the container after execution.
 If you need to debug or explore:
 
 ```bash
-docker compose run --rm redusql /bin/bash
+docker compose run --rm --entrypoint /bin/bash redusql
 ```
 
 Then run commands inside the container:
 
 ```bash
-reducer --query /app/queries/query1/original_query.sql --test /app/test.sh
-```
-
-### Method 3: One-liner Alias
-
-For convenience, add this to your `.bashrc` or `.zshrc`:
-
-```bash
-alias redusql='docker compose run --rm redusql reducer'
-
-# Then use:
-redusql --query /app/queries/query1/original_query.sql --test /app/test.sh
+redusql --query /app/queries/query1/original_test.sql --test /app/test_crash_3_26_0.sh
 ```
 
 ## Query Organization
 
 Each query should be organized in its own directory under `queries/`:
 
-1. **SQL Query File:** `original_query.sql` - The SQL query to reduce
-2. **Oracle File:** `oracle.txt` - (Optional) Specifies the bug type:
-    - `CRASH(3.26.0)` - Test for crashes in SQLite 3.26.0
-    - `CRASH(3.39.4)` - Test for crashes in SQLite 3.39.4
-    - `DIFF` - Test for differential behavior between versions
-    - If not provided, defaults to `CRASH(3.26.0)`
+1. **SQL Query File:** `original_test.sql` - The SQL query to reduce
 
-**Example oracle.txt:**
+**Example directory structure:**
 
 ```
-CRASH(3.26.0)
+queries/
+├── query1/
+│   └── original_test.sql
+├── query2/
+│   └── original_test.sql
+└── ...
 ```
 
-## The Shared Test Script
+## Output
 
-The `test.sh` script at the project root is automatically copied into the Docker container and handles all testing logic. It:
+ReduSQL automatically saves results to the `/app/output/` directory (mounted from your local `./output/`):
 
--   Automatically detects the oracle type from `oracle.txt` in the same directory as the SQL file
--   Supports crash detection for different SQLite versions
--   Supports differential behavior testing between SQLite versions
--   Provides detailed logging of test results
+```
+output/
+├── query1/
+│   └── reduced_query.sql
+│   └── reduced_query_tokens.txt
+├── query2/
+│   └── reduced_query.sql
+│   └── reduced_query_tokens.txt
+└── ...
+```
 
-You don't need individual test scripts for each query - the shared script handles everything.
+-   `reduced_query.sql` - The minimized SQL query
+-   `reduced_query_tokens.txt` - Token-level information about the reduction

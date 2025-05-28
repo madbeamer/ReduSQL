@@ -17,7 +17,11 @@ services:
     # Environment variables
     environment:
       - PYTHONUNBUFFERED=1
-      - OUTPUT_DIR=/output
+      - PYTHONPATH=/app
+      - OUTPUT_DIR=/app/output
     
     # Ensure the container can write to mounted volumes
     user: root
+    
+    # Set working directory
+    working_dir: /app
