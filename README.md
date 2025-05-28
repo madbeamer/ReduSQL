@@ -1,6 +1,4 @@
-# ReduSQL with Docker Compose
-
-This guide explains how to use ReduSQL with Docker Compose for reducing SQL queries using delta debugging.
+# ReduSQL
 
 ## Prerequisites
 
