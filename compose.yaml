@@ -1,27 +1,25 @@
 services:
-  redusql:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: redusql:latest
-    
-    # Mount volumes for input queries and output results
-    volumes:
-      # Mount the queries directory for input SQL files and test scripts
-      - ./queries:/app/queries
-      # Mount the output directory for reduced queries
-      - ./output:/app/output
-      # Mount the benchmarks if you have them
-      - ./benchmarks:/app/benchmarks
-    
-    # Environment variables
-    environment:
-      - PYTHONUNBUFFERED=1
-      - PYTHONPATH=/app
-      - OUTPUT_DIR=/app/output
-    
-    # Ensure the container can write to mounted volumes
-    user: root
-    
-    # Set working directory
-    working_dir: /app
+    redusql:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        image: redusql:latest
+
+        # Mount volumes for input queries and output results
+        volumes:
+            # Mount the queries directory for input SQL files and test scripts
+            - ./queries:/app/queries
+            # Mount the output directory for reduced queries
+            - ./output:/app/output
+
+        # Environment variables
+        environment:
+            - PYTHONUNBUFFERED=1
+            - PYTHONPATH=/app
+            - OUTPUT_DIR=/app/output
+
+        # Ensure the container can write to mounted volumes
+        user: root
+
+        # Set working directory
+        working_dir: /app

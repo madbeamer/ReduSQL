@@ -8,20 +8,7 @@ from src.redusql.tokenizer import SQLTokenizer
 
 
 class SubprocessTest:
-    """
-    Test class that executes a test script as a subprocess.
-    """
-    
     def __init__(self, *, test_builder, command_pattern, filename, timeout=30, verbose=False):
-        """
-        Initialize subprocess test.
-        
-        :param test_builder: Callable that builds test content from config.
-        :param command_pattern: Command pattern for test script execution.
-        :param filename: Base filename for test files.
-        :param timeout: Timeout for subprocess execution.
-        :param verbose: Enable verbose output.
-        """
         self._test_builder = test_builder
         self._command_pattern = command_pattern
         self._filename = filename
@@ -29,14 +16,6 @@ class SubprocessTest:
         self._verbose = verbose
     
     def __call__(self, config, config_id):
-        """
-        Execute test for a given configuration.
-        
-        :param config: Configuration (list of token indices).
-        :param config_id: Unique identifier for this test.
-        :return: Outcome.PASS or Outcome.FAIL
-        """
-        # Build test content from configuration
         test_content = self._test_builder(config)
         
         # Create temporary file instead of using work directory
@@ -95,20 +74,8 @@ class SubprocessTest:
         return outcome
 
 
-class SQLTester:
-    """
-    High-level SQL tester that wraps SubprocessTest with SQL-specific logic.
-    """
-    
+class SQLTester:    
     def __init__(self, test_script, filename='query.sql', timeout=30, verbose=False):
-        """
-        Initialize SQL tester.
-        
-        :param test_script: Path to the test script.
-        :param filename: Base filename for SQL test files.
-        :param timeout: Timeout for test execution.
-        :param verbose: Enable verbose output.
-        """
         self._test_script = Path(test_script)
         self._filename = filename
         self._timeout = timeout
@@ -121,39 +88,24 @@ class SQLTester:
             raise PermissionError(f"Test script is not executable: {test_script}")
     
     def create_subprocess_test(self, test_builder, **kwargs):
-        """
-        Create a SubprocessTest instance with the given test builder.
-        
-        :param test_builder: Test builder for creating test content.
-        :param kwargs: Additional arguments passed to SubprocessTest.
-        :return: SubprocessTest instance.
-        """
-        # Use verbose from kwargs if provided, otherwise use self._verbose
         verbose = kwargs.get('verbose', self._verbose)
         
         return SubprocessTest(
             test_builder=test_builder,
-            command_pattern=[str(self._test_script)],  # No '%s' placeholder needed
+            command_pattern=[str(self._test_script)],
             filename=self._filename,
             timeout=self._timeout,
             verbose=verbose
         )
     
-    def test_tokens_directly(self, tokens):
+    def test_sql_directly(self, sql_text):
         """
-        Test tokens directly without using the DD framework.
-        Useful for validation and debugging.
-        
-        :param tokens: List of SQL tokens to test.
-        :return: True if bug is triggered, False otherwise.
+        Test SQL text directly without using tokens.
         """
-        
-        sql_content = SQLTokenizer.detokenize(tokens)
-        
         # Create temporary file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', 
                                          encoding='utf-8', delete=False) as tmp_file:
-            tmp_file.write(sql_content)
+            tmp_file.write(sql_text)
             tmp_file_path = tmp_file.name
         
         try:
@@ -166,7 +118,7 @@ class SQLTester:
             env['TEST_CASE_LOCATION'] = tmp_file_path
             
             result = subprocess.run(
-                [str(self._test_script)],  # No file argument
+                [str(self._test_script)],
                 capture_output=not self._verbose,
                 text=True,
                 cwd=str(self._test_script.parent),
@@ -194,3 +146,56 @@ class SQLTester:
                 os.unlink(tmp_file_path)
             except:
                 pass
+    
+    def test_tokens_directly(self, tokens):
+        """
+        Test tokens directly. Uses ANTLR-based detokenization.
+        """
+        # Use ANTLR-based detokenization
+        sql_content = SQLTokenizer.detokenize(tokens)
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', 
+                                         encoding='utf-8', delete=False) as tmp_file:
+            tmp_file.write(sql_content)
+            tmp_file_path = tmp_file.name
+        
+        try:
+            if self._verbose:
+                print(f"    Running test script: {self._test_script}")
+                print(f"    TEST_CASE_LOCATION={tmp_file_path}")
+            
+            # Set up environment with TEST_CASE_LOCATION
+            env = os.environ.copy()
+            env['TEST_CASE_LOCATION'] = tmp_file_path
+            
+            result = subprocess.run(
+                [str(self._test_script)],
+                capture_output=not self._verbose,
+                text=True,
+                cwd=str(self._test_script.parent),
+                timeout=self._timeout,
+                env=env
+            )
+            
+            if not self._verbose and result.stderr and result.stderr.strip():
+                print(f"    Test script stderr: {result.stderr.strip()}")
+            
+            # Exit code 0 means the bug still occurs
+            return result.returncode == 0
+            
+        except subprocess.TimeoutExpired:
+            if self._verbose:
+                print("Warning: Test script timed out (assuming bug still occurs)")
+            return True
+        except Exception as e:
+            if self._verbose:
+                print(f"Error running test script: {e}")
+            return False
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(tmp_file_path)
+            except:
+                pass
+            

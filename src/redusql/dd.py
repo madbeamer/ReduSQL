@@ -10,21 +10,9 @@ from src.redusql.splitter import Splitter
 logger = logging.getLogger(__name__)
 
 
-class DD:
-    """
-    Single process version of the Delta Debugging algorithm.
-    """
-    
+class DD:    
     def __init__(self, test, *, id_prefix=None,
                  config_iterator=None):
-        """
-        Initialize a DD object.
-        
-        :param test: A callable tester object.
-        :param id_prefix: Tuple to prepend to config IDs during tests.
-        :param config_iterator: Reference to a generator function that provides
-            config indices in an arbitrary order.
-        """
         self._test = test
         self._split = Splitter()
         self._cache = Cache()
@@ -35,13 +23,6 @@ class DD:
     def __call__(self, config):
         """
         Return a 1-minimal failing subset of the initial configuration.
-        
-        :param config: The initial configuration that will be reduced.
-        :return: 1-minimal failing configuration.
-        :raises ReductionException: If reduction could not run until completion.
-            The ``result`` attribute of the exception contains the smallest,
-            potentially non-minimal, but failing configuration found during
-            reduction.
         """
         for iter_cnt in itertools.count():
             logger.info('Iteration #%d', iter_cnt)
@@ -105,13 +86,6 @@ class DD:
     def _reduce_config(self, run, subsets, complement_offset):
         """
         Perform the reduce task of ddmin.
-        
-        :param run: The index of the current iteration.
-        :param subsets: List of sets that the current configuration is split to.
-        :param complement_offset: A compensation offset needed to calculate the
-            index of the first unchecked complement (optimization purpose only).
-        :return: Tuple: (list of subsets composing the failing config or None,
-            next complement_offset).
         """
         n = len(subsets)
         fvalue = n
@@ -133,29 +107,15 @@ class DD:
                 fvalue = i
                 break
         
-        # fvalue contains the index of the cycle in the previous loop
-        # which was found interesting. Otherwise it's n.
         if fvalue < 0:
-            # Interesting complement is found.
-            # In next run, start removing the following subset
             fvalue = -fvalue - 1
             return subsets[:fvalue] + subsets[fvalue + 1:], fvalue
         if fvalue < n:
-            # Interesting subset is found.
             return [subsets[fvalue]], 0
         
         return None, complement_offset
     
     def _lookup_cache(self, config, config_id):
-        """
-        Perform a cache lookup if caching is enabled.
-        
-        :param config: The configuration we are looking for.
-        :param config_id: The ID describing the configuration (only for debug
-            message).
-        :return: None if outcome is not found for config in cache or if caching
-            is disabled, PASS or FAIL otherwise.
-        """
         cached_result = self._cache.lookup(config)
         
         return cached_result
@@ -163,11 +123,6 @@ class DD:
     def _test_config(self, config, config_id):
         """
         Test a single configuration and save the result in cache.
-        
-        :param config: The current configuration to test.
-        :param config_id: Unique ID that will be used to save tests to easily
-            identifiable directories.
-        :return: PASS or FAIL
         """
         config_id = self._iteration_prefix + config_id
         

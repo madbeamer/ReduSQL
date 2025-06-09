@@ -13,27 +13,12 @@ logger = logging.getLogger('redusql')
 
 
 def create_parser():
-    """Create the command-line argument parser."""
-    
-    parser = argparse.ArgumentParser(
-        description='ReduSQL - Bug-Triggering SQL Query Reducer',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Example usage:
-  redusql --query query_to_reduce.sql --test test_script.sh
-  
-The test script should:
-  - Read the SQL query path from TEST_CASE_LOCATION environment variable
-  - Return exit code 0 if the bug still occurs
-  - Return exit code 1 if the bug no longer occurs
-        """
-    )
+    parser = argparse.ArgumentParser(description='ReduSQL - Bug-Triggering SQL Query Reducer')
     
     parser.add_argument(
         '--query',
         metavar='FILE',
-        required=True,
-        help='SQL query file to reduce'
+        help='SQL query file to reduce (default: query.sql in current directory)'
     )
     
     parser.add_argument(
@@ -47,7 +32,23 @@ The test script should:
     parser.add_argument(
         '--output',
         metavar='FILE',
-        help='path to save the reduced query (default: auto-generated)'
+        help='path to save the reduced query (default: same directory as --query)'
+    )
+    
+    # Algorithm settings
+    parser.add_argument(
+        '--algorithm',
+        metavar='NAME',
+        choices=['DD', 'HDD', 'DDHDD'],
+        default='DDHDD',
+        help='reduction algorithm: DD (Delta Debugging) or HDD (Hierarchical Delta Debugging) or DDHDD (First Delta Debugging, then Hierarchical Delta Debugging) (default: %(default)s)'
+    )
+    
+    parser.add_argument(
+        '--fixpoint',
+        action='store_true',
+        default=False,
+        help='use fixpoint iteration (HDD*) for true 1-minimality instead of just 1-tree-minimality per level'
     )
     
     # Parallel settings
@@ -86,9 +87,9 @@ The test script should:
     parser.add_argument(
         '--atom',
         metavar='NAME',
-        choices=['token', 'line', 'both'],
+        choices=['token', 'line'],
         default='line',
-        help='atom (i.e., granularity) of input (%(choices)s; default: %(default)s)'
+        help='atom (i.e., granularity) of input for DD (%(choices)s; default: %(default)s)'
     )
     
     # Logging settings
@@ -102,7 +103,6 @@ The test script should:
 
 
 def configure_logging(args):
-    """Configure logging based on command-line arguments."""
     if args.verbose:
         level = logging.DEBUG
     else:
@@ -122,26 +122,25 @@ def set_test_case_location(args):
         test_case_location = args.query
     else:
         # Use default path if --query is not provided
-        test_case_location = '/app/query.sql'
+        test_case_location = 'query.sql'
     
     os.environ['TEST_CASE_LOCATION'] = test_case_location
     logger.debug(f'Set TEST_CASE_LOCATION to: {test_case_location}')
-
-
-def validate_args(args):
-    """Validate command-line arguments."""
-    # Determine the query file path
-    query_file = args.query if args.query else '/app/query.sql'
     
+    return test_case_location
+
+
+def validate_args(query_file, test_script):
+    """Validate command-line arguments."""
     # Check that input files exist
     if not os.path.exists(query_file):
         raise ValueError(f'Query file does not exist: {query_file}')
     
-    if not os.path.exists(args.test):
-        raise ValueError(f'Test script does not exist: {args.test}')
+    if not os.path.exists(test_script):
+        raise ValueError(f'Test script does not exist: {test_script}')
     
-    if not os.access(args.test, os.X_OK):
-        raise ValueError(f'Test script is not executable: {args.test}')
+    if not os.access(test_script, os.X_OK):
+        raise ValueError(f'Test script is not executable: {test_script}')
 
 
 def main():
@@ -152,29 +151,37 @@ def main():
     try:
         configure_logging(args)
         
-        set_test_case_location(args)
+        # Set TEST_CASE_LOCATION and get the query file path
+        query_file = set_test_case_location(args)
         
-        validate_args(args)
-        
-        query_file = args.query if args.query else '/app/query.sql'
+        validate_args(query_file, args.test)
         
         # Create reducer instance
         reducer = SQLReducer(query_file, args.test, verbose=args.verbose)
         
+        # Show algorithm selection info
+        if args.algorithm == 'HDD':
+            if args.fixpoint:
+                logger.info(f"Using HDD*")
+            else:
+                logger.info(f"Using HDD")
+        
         # Run reduction with specified parameters
         reduced_query = reducer.reduce(
+            algorithm=args.algorithm,
             parallel=args.parallel,
             subset_first=args.subset_first,
             subset_iterator=args.subset_iterator,
             complement_iterator=args.complement_iterator,
-            atom=args.atom
+            atom=args.atom,
+            use_fixpoint=args.fixpoint
         )
         
         if reduced_query is not None:
-            # Save the result
+            # Save the result using TEST_CASE_LOCATION
             reducer.save_reduced_query(args.output)
             print("\n" + "="*60)
-            print("✓ Reduction completed successfully!")
+            print("✓ Reduction completed successfully!")       
             sys.exit(0)
         else:
             print("\n" + "="*60)

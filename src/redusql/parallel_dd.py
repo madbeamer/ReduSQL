@@ -10,18 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class SharedCache:
-    """
-    Thread-safe cache wrapper that stores the evaluated configurations
-    and their outcome.
-    """
-    
     def __init__(self, cache):
         self._cache = cache
         self._lock = Lock()
-    
-    def set_test_builder(self, test_builder):
-        with self._lock:
-            self._cache.set_test_builder(test_builder)
     
     def add(self, config, result):
         with self._lock:
@@ -47,17 +38,6 @@ class ParallelDD(DD):
     
     def __init__(self, test, *, id_prefix=None,
                  config_iterator=None, proc_num=None):
-        """
-        Initialize a ParallelDD object.
-        
-        :param test: A callable tester object.
-        :param split: Splitter method to break a configuration up to n parts.
-        :param cache: Cache object to use.
-        :param id_prefix: Tuple to prepend to config IDs during tests.
-        :param config_iterator: Reference to a generator function that provides
-            config indices in an arbitrary order.
-        :param proc_num: The level of parallelization.
-        """
         super().__init__(test=test, id_prefix=id_prefix, 
                          config_iterator=config_iterator)
         self._cache = SharedCache(self._cache)
@@ -68,13 +48,6 @@ class ParallelDD(DD):
         """
         Perform the reduce task using multiple processes. Subset and complement
         set tests are mixed and don't wait for each other.
-        
-        :param run: The index of the current iteration.
-        :param subsets: List of sets that the current configuration is split to.
-        :param complement_offset: A compensation offset needed to calculate the
-            index of the first unchecked complement (optimization purpose only).
-        :return: Tuple: (list of subsets composing the failing config or None,
-            next complement_offset).
         """
         n = len(subsets)
         fvalue = n
@@ -133,9 +106,5 @@ class ParallelDD(DD):
         return None, complement_offset
     
     def _test_config_with_index(self, index, config, config_id):
-        """
-        Test a configuration and return both the index and outcome.
-        Used for parallel execution.
-        """
         return index, self._test_config(config, config_id)
     

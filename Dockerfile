@@ -23,16 +23,12 @@ WORKDIR /app
 # Create necessary directories
 RUN mkdir -p /app/src /app/output /app/queries
 
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
 # Copy the entire source code structure
 COPY src/ /app/src/
-
-# Copy test scripts
-COPY test_crash_3_26_0.sh /app/test_crash_3_26_0.sh
-COPY test_crash_3_39_4.sh /app/test_crash_3_39_4.sh
-COPY test_diff.sh /app/test_diff.sh
-
-# Make the scripts executable
-RUN chmod +x /app/src/main.py /app/test_crash_3_26_0.sh /app/test_crash_3_39_4.sh /app/test_diff.sh
 
 # Create symbolic links for easier access
 RUN ln -sf /app/src/main.py /usr/bin/redusql
