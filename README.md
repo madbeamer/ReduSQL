@@ -9,13 +9,8 @@
 
 1. **Ensure you have the required files:**
 
-    - Test script (e.g., `test.sh`) at project root
-    - Your queries organized in `queries/queryN/` directories
-
-2. **Build the Docker image:**
-    ```bash
-    docker compose build
-    ```
+-   Your queries organized in `queries/queryN/` directories
+-   Test scripts in a mounted directory (e.g., in `queries/queryN/`)
 
 ## Using ReduSQL with Your Queries
 
@@ -26,32 +21,12 @@ Run the reducer directly with `docker compose run`:
 ```bash
 docker compose run --rm redusql \
   --query /app/queries/query1/original_test.sql \
-  --test /app/test.sh
-```
-
-**With verbose output:**
-
-```bash
-docker compose run --rm redusql \
-  --query /app/queries/query1/original_test.sql \
-  --test /app/test.sh \
-  --verbose
-```
-
-**With parallel processing:**
-
-```bash
-docker compose run --rm redusql \
-  --query /app/queries/query1/original_test.sql \
-  --test /app/test.sh \
-  --parallel
+  --test /app/queries/query1/test_query_1.sh
 ```
 
 The `--rm` flag automatically removes the container after execution.
 
 ### Method 2: Interactive Mode
-
-If you need to debug or explore:
 
 ```bash
 docker compose run --rm --entrypoint /bin/bash redusql
@@ -60,7 +35,7 @@ docker compose run --rm --entrypoint /bin/bash redusql
 Then run commands inside the container:
 
 ```bash
-redusql --query /app/queries/query1/original_test.sql --test /app/test_crash_3_26_0.sh
+redusql --query /app/queries/query1/original_test.sql --test /app/queries/query1/test_query_1.sh
 ```
 
 ## Query Organization
@@ -74,26 +49,28 @@ Each query should be organized in its own directory under `queries/`:
 ```
 queries/
 ├── query1/
-│   └── original_test.sql
+│   ├── original_test.sql
+│   └── test_query_1.sh
 ├── query2/
-│   └── original_test.sql
+│   ├── original_test.sql
+│   └── test_query_2.sh
 └── ...
 ```
 
 ## Output
 
-ReduSQL automatically saves results to the `/app/output/` directory (mounted from your local `./output/`):
+ReduSQL automatically saves results to a directory `output` inside the same directory as your `original_test.sql` file.
 
 ```
 output/
 ├── query1/
-│   └── reduced_query.sql
-│   └── reduced_query_tokens.txt
+│   └── original_test_reduced.sql
+│   └── original_test_reduced_info.txt
 ├── query2/
-│   └── reduced_query.sql
-│   └── reduced_query_tokens.txt
+│   └── original_test_reduced.sql
+│   └── original_test_reduced_info.txt
 └── ...
 ```
 
--   `reduced_query.sql` - The minimized SQL query
--   `reduced_query_tokens.txt` - Token-level information about the reduction
+-   `original_test_reduced.sql` - The minimized SQL query
+-   `original_test_reduced_info.txt` - Information about the reduction
