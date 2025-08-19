@@ -98,6 +98,46 @@ class SQLTester:
             verbose=verbose
         )
     
+    def test_original_file_directly(self, query_file_path):
+        """
+        Test the original query file directly without any tokenization/detokenization.
+        This preserves the exact original file content and formatting.
+        """
+        query_file_path = Path(query_file_path)
+        
+        try:
+            if self._verbose:
+                print(f"    Running test script: {self._test_script}")
+                print(f"    TEST_CASE_LOCATION={query_file_path}")
+            
+            # Set up environment with TEST_CASE_LOCATION pointing to original file
+            env = os.environ.copy()
+            env['TEST_CASE_LOCATION'] = str(query_file_path)
+            
+            result = subprocess.run(
+                [str(self._test_script)],
+                capture_output=not self._verbose,
+                text=True,
+                cwd=str(self._test_script.parent),
+                timeout=self._timeout,
+                env=env
+            )
+            
+            if not self._verbose and result.stderr and result.stderr.strip():
+                print(f"    Test script stderr: {result.stderr.strip()}")
+            
+            # Exit code 0 means the bug still occurs
+            return result.returncode == 0
+            
+        except subprocess.TimeoutExpired:
+            if self._verbose:
+                print("Warning: Test script timed out (assuming bug still occurs)")
+            return True
+        except Exception as e:
+            if self._verbose:
+                print(f"Error running test script: {e}")
+            return False
+    
     def test_sql_directly(self, sql_text):
         """
         Test SQL text directly without using tokens.
@@ -153,13 +193,17 @@ class SQLTester:
         """
         # Use ANTLR-based detokenization
         sql_content = SQLTokenizer.detokenize(tokens)
-        
-        # Create temporary file
+
+        # Create debug directory if it doesn't exist
+        debug_dir = Path('/app/queries')
+        debug_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create temporary file for the test
         with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', 
-                                         encoding='utf-8', delete=False) as tmp_file:
+                                        encoding='utf-8', delete=False) as tmp_file:
             tmp_file.write(sql_content)
             tmp_file_path = tmp_file.name
-        
+
         try:
             if self._verbose:
                 print(f"    Running test script: {self._test_script}")
@@ -168,7 +212,7 @@ class SQLTester:
             # Set up environment with TEST_CASE_LOCATION
             env = os.environ.copy()
             env['TEST_CASE_LOCATION'] = tmp_file_path
-            
+
             result = subprocess.run(
                 [str(self._test_script)],
                 capture_output=not self._verbose,
@@ -177,13 +221,13 @@ class SQLTester:
                 timeout=self._timeout,
                 env=env
             )
-            
+
             if not self._verbose and result.stderr and result.stderr.strip():
                 print(f"    Test script stderr: {result.stderr.strip()}")
-            
+
             # Exit code 0 means the bug still occurs
             return result.returncode == 0
-            
+
         except subprocess.TimeoutExpired:
             if self._verbose:
                 print("Warning: Test script timed out (assuming bug still occurs)")
@@ -193,9 +237,8 @@ class SQLTester:
                 print(f"Error running test script: {e}")
             return False
         finally:
-            # Clean up temporary file
+            # Clean up temporary file (but keep debug file)
             try:
                 os.unlink(tmp_file_path)
             except:
                 pass
-            
