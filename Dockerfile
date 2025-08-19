@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Create necessary directories
-RUN mkdir -p /app/src /app/output /app/queries
+RUN mkdir -p /app/src /app/queries
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
@@ -33,6 +33,8 @@ COPY src/ /app/src/
 # Create symbolic links for easier access
 RUN ln -sf /app/src/main.py /usr/bin/redusql
 RUN ln -sf /app/src/main.py /usr/bin/reducer
+
+RUN chmod +x /usr/bin/redusql /usr/bin/reducer /app/src/main.py
 
 # Set working directory
 WORKDIR /app

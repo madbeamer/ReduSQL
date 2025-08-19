@@ -9,8 +9,6 @@ services:
         volumes:
             # Mount the queries directory for input SQL files and test scripts
             - ./queries:/app/queries
-            # Mount the output directory for reduced queries
-            - ./output:/app/output
 
         # Environment variables
         environment:
