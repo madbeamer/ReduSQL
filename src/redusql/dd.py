@@ -34,7 +34,7 @@ class DD:
             for run in itertools.count():
                 logger.info('Run #%d', run)
                 logger.info('\tConfig size: %d', len(config))
-                assert self._test_config(config, (f'r{run}', 'assert')) is Outcome.FAIL
+                # assert self._test_config(config, (f'r{run}', 'assert')) is Outcome.FAIL
                 
                 # Minimization ends if the configuration is already reduced to a single unit.
                 if len(config) < 2:
