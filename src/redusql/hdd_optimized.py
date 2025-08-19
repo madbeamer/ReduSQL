@@ -11,6 +11,8 @@ from src.redusql.antlr4.SQLiteParser import SQLiteParser
 from src.redusql.antlr4.SQLiteParserVisitor import SQLiteParserVisitor
 from src.redusql.dd import DD
 from src.redusql.outcome import Outcome
+from src.redusql.tokenizer import SQLTokenizer
+
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,7 @@ class HoistableNode:
 
 
 class OptimizedSQLTreeNode:
-    def __init__(self, parse_tree_node: ParseTree, level: int = 0, node_id: int = 0):
+    def __init__(self, parse_tree_node: ParseTree, level: int = 0, node_id: int = 0, force_reducible: bool = False):
         self.parse_tree_node = parse_tree_node
         self.level = level
         self.node_id = node_id
@@ -78,6 +80,7 @@ class OptimizedSQLTreeNode:
         self.parent: Optional['OptimizedSQLTreeNode'] = None
         self.is_pruned = False
         self.hoisted_node: Optional['OptimizedSQLTreeNode'] = None  # If this node was hoisted
+        self.force_reducible = force_reducible
         
         # Optimization: Cache node properties
         self._text_cache = None
@@ -190,21 +193,25 @@ class OptimizedSQLTreeNode:
     
     def is_reducible(self) -> bool:
         if self._is_reducible is None:
-            # Only consider nodes that:
-            # 1. Have children (non-terminal)
-            # 2. Are not just whitespace or single characters
-            # 3. Are not at the deepest levels (likely terminals)
-            
-            if not self.children:
-                self._is_reducible = False
+            # If force_reducible is set, always return True
+            if self.force_reducible:
+                self._is_reducible = True
             else:
-                text = self.get_text().strip()
-                # Skip nodes that are just punctuation or very short
-                self._is_reducible = (
-                    len(text) > 2 and 
-                    not text in {';', ',', '(', ')', '.', ' '} and
-                    len(self.children) > 1  # Must have multiple children to be worth reducing
-                )
+                # Only consider nodes that:
+                # 1. Have children (non-terminal)
+                # 2. Are not just whitespace or single characters
+                # 3. Are not at the deepest levels (likely terminals)
+                
+                if not self.children:
+                    self._is_reducible = False
+                else:
+                    text = self.get_text().strip()
+                    # Skip nodes that are just punctuation or very short
+                    self._is_reducible = (
+                        len(text) > 2 and 
+                        not text in {';', ',', '(', ')', '.', ' '} and
+                        len(self.children) > 1  # Must have multiple children to be worth reducing
+                    )
         
         return self._is_reducible
     
@@ -312,16 +319,20 @@ class OptimizedSQLTreeBuilder(SQLiteParserVisitor):
         self.node_counter = 0
         self.levels_map: Dict[int, List[OptimizedSQLTreeNode]] = {}
         self.reducible_nodes: Set[int] = set()  # Track reducible node IDs
+        self.force_all_reducible = False
     
-    def build_tree(self, parse_tree: ParseTree) -> OptimizedSQLTreeNode:
+    def build_tree(self, parse_tree: ParseTree, token_count: int = 0) -> OptimizedSQLTreeNode:
         """Build the hierarchical tree from ANTLR parse tree."""
+        # Check if we should force all nodes to be reducible based on token count
+        self.force_all_reducible = token_count < 300
+        
         self.root_node = self._build_node(parse_tree, 0)
         self._identify_reducible_nodes()
         return self.root_node
     
     def _build_node(self, parse_tree_node: ParseTree, level: int) -> OptimizedSQLTreeNode:
         """Recursively build tree nodes."""
-        node = OptimizedSQLTreeNode(parse_tree_node, level, self.node_counter)
+        node = OptimizedSQLTreeNode(parse_tree_node, level, self.node_counter, self.force_all_reducible)
         self.node_counter += 1
         
         # Add to levels map
@@ -432,17 +443,34 @@ class OptimizedHierarchicalDeltaDebuggerWithHoisting:
         
         self.tree_builder = OptimizedSQLTreeBuilder()
         self.tree_renderer = OptimizedSQLTreeRenderer()
-        self.root_node = self._parse_sql(original_sql)
+        
+        # Count tokens in the original SQL
+        token_count = self._count_tokens(original_sql)
+        
+        self.root_node = self._parse_sql(original_sql, token_count)
         
         self.test_count = 0
         self.cache_hits = 0
         self.hoisting_count = 0
         
         if self.verbose:
+            print(f"Original SQL token count: {token_count}")
+            if token_count < 300:
+                print("Token count < 300: All nodes will be treated as reducible")
             print(f"Parsed SQL into tree with {self.tree_builder.get_max_level() + 1} levels")
             print(f"Identified {len(self.tree_builder.reducible_nodes)} reducible nodes")
     
-    def _parse_sql(self, sql: str) -> OptimizedSQLTreeNode:
+    def _count_tokens(self, sql: str) -> int:
+        """Count the number of tokens in the SQL query."""
+        try:
+            tokens = SQLTokenizer.tokenize(sql)
+            return len(tokens)
+
+        except Exception as e:
+            logger.warning(f"Failed to count tokens, defaulting to 0: {e}")
+            return 0
+    
+    def _parse_sql(self, sql: str, token_count: int) -> OptimizedSQLTreeNode:
         try:
             # Create ANTLR input stream
             input_stream = InputStream(sql)
@@ -457,8 +485,8 @@ class OptimizedHierarchicalDeltaDebuggerWithHoisting:
             # Parse the SQL (starting from the root rule)
             parse_tree = parser.parse()
             
-            # Build our hierarchical tree
-            root_node = self.tree_builder.build_tree(parse_tree)
+            # Build our hierarchical tree with token count information
+            root_node = self.tree_builder.build_tree(parse_tree, token_count)
             
             return root_node
             
@@ -652,125 +680,3 @@ class OptimizedHierarchicalDeltaDebuggerWithHoisting:
 def apply_optimized_hdd(original_sql: str, tester_func, verbose: bool = False) -> str:
     hdd = OptimizedHierarchicalDeltaDebuggerWithHoisting(original_sql, tester_func, verbose)
     return hdd.reduce()
-
-
-# # Convenience function for applying hoisting only
-# def apply_hoisting_only(original_sql: str, tester_func, verbose: bool = False) -> str:
-#     """
-#     Apply only hoisting transformations without traditional HDD pruning.
-#     Useful for comparison or as a preprocessing step.
-    
-#     :param original_sql: The original SQL query to reduce.
-#     :param tester_func: Function that tests if a SQL query triggers the bug.
-#     :param verbose: Enable verbose output.
-#     :return: The reduced SQL query with hoisting applied.
-#     """
-#     if verbose:
-#         print("Applying Hoisting-Only Algorithm...")
-    
-#     # Create the debugger instance
-#     hdd = OptimizedHierarchicalDeltaDebuggerWithHoisting(original_sql, tester_func, verbose)
-    
-#     # Apply only hoisting (skip the pruning step)
-#     max_level = hdd.tree_builder.get_max_level()
-#     total_hoisted = 0
-    
-#     for level in range(max_level + 1):
-#         nodes_at_level = hdd.tree_builder.get_nodes_at_level(level)
-#         if not nodes_at_level:
-#             continue
-        
-#         if verbose:
-#             print(f"\nLevel {level}/{max_level}: {len(nodes_at_level)} nodes")
-        
-#         # Apply only hoisting transformations
-#         hoisting_transformations = hdd.hoisting_manager.find_best_hoisting_transformations(
-#             nodes_at_level, hdd.tree_renderer
-#         )
-        
-#         if hoisting_transformations:
-#             hdd.hoisting_manager.apply_transformations(hoisting_transformations, hdd.tree_renderer)
-#             hoisted_this_level = len(hoisting_transformations)
-#             total_hoisted += hoisted_this_level
-            
-#             if verbose:
-#                 print(f"  Applied {hoisted_this_level} hoisting transformations")
-    
-#     # Render the final result
-#     reduced_sql = hdd.tree_renderer.render(hdd.root_node)
-    
-#     if verbose:
-#         print(f"\nHoisting Summary:")
-#         print(f"  Total hoisted nodes: {total_hoisted}")
-#         print(f"  Total tests: {hdd.hoisting_manager.transformation_count}")
-    
-#     return reduced_sql
-
-
-# # Alternative HDDH implementation that applies hoisting first, then pruning
-# def apply_hoist_then_prune(original_sql: str, tester_func, verbose: bool = False) -> str:
-#     """
-#     Apply hoisting first as preprocessing, then traditional HDD pruning.
-#     This can sometimes achieve better results than interleaved HDDH.
-    
-#     :param original_sql: The original SQL query to reduce.
-#     :param tester_func: Function that tests if a SQL query triggers the bug.
-#     :param verbose: Enable verbose output.
-#     :return: The reduced SQL query.
-#     """
-#     if verbose:
-#         print("=== Two-Phase Algorithm: Hoisting + HDD ===")
-#         print("Phase 1: Applying hoisting transformations...")
-    
-#     # Phase 1: Apply hoisting only
-#     hoisted_sql = apply_hoisting_only(original_sql, tester_func, verbose)
-    
-#     if verbose:
-#         original_len = len(original_sql)
-#         hoisted_len = len(hoisted_sql)
-#         if original_len > 0:
-#             reduction = (1 - hoisted_len / original_len) * 100
-#             print(f"Hoisting phase: {reduction:.1f}% reduction")
-#         print("\nPhase 2: Applying traditional HDD pruning...")
-    
-#     # Phase 2: Apply traditional optimized HDD (without hoisting)
-#     # We need to create a version that doesn't do hoisting
-#     class OptimizedHDDWithoutHoisting(OptimizedHierarchicalDeltaDebuggerWithHoisting):
-#         def reduce(self):
-#             # Call the parent class but skip hoisting steps
-#             max_level = self.tree_builder.get_max_level()
-#             total_nodes = sum(len(self.tree_builder.get_nodes_at_level(i)) for i in range(max_level + 1))
-#             reducible_nodes = len(self.tree_builder.reducible_nodes)
-            
-#             levels_processed = 0
-#             nodes_pruned = 0
-            
-#             for level in range(max_level + 1):
-#                 reducible_nodes_at_level = self.tree_builder.get_reducible_nodes_at_level(level)
-#                 if not reducible_nodes_at_level:
-#                     continue
-                
-#                 # Only apply pruning, no hoisting
-#                 nodes_before = len([n for n in reducible_nodes_at_level if not n.is_pruned])
-#                 if nodes_before > 1:
-#                     self._reduce_level(level, reducible_nodes_at_level)
-#                     nodes_after = len([n for n in reducible_nodes_at_level if not n.is_pruned])
-                    
-#                     pruned_this_level = nodes_before - nodes_after
-#                     nodes_pruned += pruned_this_level
-                
-#                 levels_processed += 1
-            
-#             return self.tree_renderer.render(self.root_node)
-    
-#     # Apply pruning to the hoisted result
-#     hdd_pruner = OptimizedHDDWithoutHoisting(hoisted_sql, tester_func, verbose)
-#     final_sql = hdd_pruner.reduce()
-    
-#     if verbose:
-#         final_len = len(final_sql)
-#         if len(original_sql) > 0:
-#             total_reduction = (1 - final_len / len(original_sql)) * 100
-#             print(f"\nTwo-phase total reduction: {total_reduction:.1f}%")
-    
-#     return final_sql
