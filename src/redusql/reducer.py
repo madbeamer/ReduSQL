@@ -4,10 +4,6 @@ import os
 from pathlib import Path
 from multiprocessing import cpu_count
 
-from antlr4 import InputStream, CommonTokenStream, Token
-from src.redusql.antlr4.SQLiteLexer import SQLiteLexer
-from src.redusql.antlr4.SQLiteParser import SQLiteParser
-
 from src.redusql.cache import Cache
 from src.redusql.dd import DD
 from src.redusql.exception import ReductionException, ReductionStopped
@@ -139,8 +135,9 @@ class SQLReducer:
         )
         
         # First, verify that the original query triggers the bug
+        # Test the original file directly instead of tokenizing/detokenizing
         print("Verifying original query triggers the bug...")
-        if not sql_tester.test_tokens_directly(self.current_tokens):
+        if not sql_tester.test_original_file_directly(self.query_file):
             print("ERROR: Original query does not trigger the bug!")
             print("Test script returned exit code 1 for the original query.")
             print("Please check your test script and query file.")
@@ -369,9 +366,19 @@ class SQLReducer:
         print("-" * 60)
         print(f"Final query has {len(self.current_tokens)} tokens")
         print(f"Total reduction: {len(self.original_tokens) - len(self.current_tokens)} tokens")
-        if len(self.original_tokens) > 0:
-            percentage = (1 - len(self.current_tokens) / len(self.original_tokens)) * 100
-            print(f"Total reduction percentage: {percentage:.2f}%")
+        
+        # Check if reduction actually made things worse
+        if len(self.current_tokens) > len(self.original_tokens):
+            reduced_query = self.original_query
+            self.current_tokens = self.original_tokens[:]
+            percentage = 0.0
+        else:
+            if len(self.original_tokens) > 0:
+                percentage = (1 - len(self.current_tokens) / len(self.original_tokens)) * 100
+            else:
+                percentage = 0.0
+        
+        print(f"Total reduction percentage: {percentage:.2f}%")
         
         # Format and display the time taken
         if self.reduction_time < 60:
@@ -395,19 +402,22 @@ class SQLReducer:
             if test_case_location:
                 # Create reduced filename based on TEST_CASE_LOCATION
                 original_path = Path(test_case_location)
-                output_file = original_path.parent / f"{original_path.stem}_reduced.sql"
+                output_file = original_path.parent / "output" / f"{original_path.stem}_reduced.sql"
             else:
-                output_file = 'query_reduced.sql'
-        
+                output_file = Path("output") / 'query_reduced.sql'
+        else:
+            # If output_file is provided, ensure it's in the output directory
+            output_file = Path("output") / Path(output_file).name
+
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Convert current tokens to query text using ANTLR detokenizer
         current_query = SQLTokenizer.detokenize(self.current_tokens)
-        
+
         output_path.write_text(current_query)
         print(f"\nReduced query saved to: {output_file}")
-        
+
         # Also save token information for debugging (with a different name to avoid overwriting)
         token_info_file = output_path.parent / f"{output_path.stem}_info.txt"
         with open(token_info_file, 'w') as f:
@@ -430,5 +440,6 @@ class SQLReducer:
             f.write("\nReduced tokens:\n")
             for i, token in enumerate(self.current_tokens):
                 f.write(f"{i:3d}: {repr(token)}\n")
-        
+
         print(f"Token information saved to: {token_info_file}")
+        
