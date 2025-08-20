@@ -74,3 +74,7 @@ output/
 
 -   `original_test_reduced.sql` - The minimized SQL query
 -   `original_test_reduced_info.txt` - Information about the reduction
+
+## License
+
+[MIT](https://opensource.org/license/MIT)
